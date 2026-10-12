@@ -1,0 +1,55 @@
+@base = http://localhost:3000
+
+### 1. add a truck
+POST {{base}}/api/trucks
+Content-Type: application/json
+
+{"plate_number":"ABC-1234","device_id":"TRUCK-001"}
+
+### 2. add a client
+POST {{base}}/api/clients
+Content-Type: application/json
+
+{"company_name":"Sunrise Grocers"}
+
+### 3. office dispatches the truck
+POST {{base}}/api/dispatch
+Content-Type: application/json
+
+{"truck_id":1}
+
+### 4. GPS pings BEFORE a trip exists (send this 3 times, change the numbers a little)
+POST {{base}}/api/gps
+Content-Type: application/json
+
+{"device_id":"TRUCK-001","lat":14.3300,"lng":120.9400,"speed":30}
+
+### 5. driver calls in the destination, trip is created
+POST {{base}}/api/trips
+Content-Type: application/json
+
+{"truck_id":1,"client_id":1,"destination_lat":13.9400,"destination_lng":121.1600,"allowance_amount":3500}
+
+### 6. GPS pings AFTER the trip exists (send several, move the lat/lng each time)
+POST {{base}}/api/gps
+Content-Type: application/json
+
+{"device_id":"TRUCK-001","lat":14.2000,"lng":121.0000,"speed":55}
+
+### 7. delivered
+PATCH {{base}}/api/trips/1/delivered
+
+### 8. truck is back, waybill submitted
+PATCH {{base}}/api/trips/1/waybill
+Content-Type: application/json
+
+{"waybill_number":"WB-0001","stops":[{"client_id":1,"drop_type":"full","notes":"20 sacks"}]}
+
+### 9. billing queue
+GET {{base}}/api/trips/awaiting-billing
+
+### 10. generate invoice
+POST {{base}}/api/trips/1/invoice
+
+### 11. mark paid
+POST {{base}}/api/invoices/1/pay
