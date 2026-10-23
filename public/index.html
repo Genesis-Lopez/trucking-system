@@ -1,0 +1,967 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FleetTrack</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+  :root{
+    --red:#C62828; --navy:#141B2D; --bg:#F0F0EE; --card:#fff; --line:#E7E6E2;
+    --muted:#8A8985; --text:#222; --pink:#FDECEC; --lav:#E9E7FB;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--text);font-size:14px}
+  .topbar{background:var(--red);color:#fff;height:48px;display:flex;align-items:center;padding:0 20px;font-weight:600;letter-spacing:.3px}
+  .layout{display:flex;min-height:calc(100vh - 48px)}
+  .rail{width:64px;background:var(--navy);display:flex;flex-direction:column;align-items:center;padding:16px 0;gap:14px;flex-shrink:0}
+  .rail button{width:38px;height:38px;border-radius:10px;border:0;background:rgba(255,255,255,.08);color:#C9D0E0;display:flex;align-items:center;justify-content:center;cursor:pointer}
+  .rail button.active{background:#fff;color:var(--navy)}
+  .rail svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+  .content{flex:1;padding:20px;min-width:0}
+
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px}
+  .card h2{margin:0 0 2px;font-size:15px;font-weight:600}
+  .sub{margin:0 0 14px;font-size:12.5px;color:var(--muted)}
+  .muted{color:var(--muted);font-size:13px}
+  .narrow{max-width:560px}
+  .wide{max-width:760px}
+
+  .home{display:grid;grid-template-columns:minmax(0,1.7fr) minmax(0,1fr);gap:16px;align-items:start}
+  @media (max-width:900px){.home{grid-template-columns:1fr}}
+
+  /* calendar */
+  .cal-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap}
+  .legend{display:flex;gap:14px;font-size:12px;color:var(--muted);align-items:center}
+  .dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:#F5B301}
+  .cal-nav{display:flex;gap:6px;align-items:center;margin-bottom:10px}
+  .cal-nav button{border:1px solid var(--line);background:#fff;border-radius:8px;width:30px;height:28px;cursor:pointer}
+  .cal-nav .today-btn{width:auto;padding:0 10px;font-size:12px}
+  .cal{display:grid;grid-template-columns:repeat(7,1fr);gap:6px}
+  .dow{font-size:11px;color:var(--muted);text-align:center;font-weight:500;padding-bottom:2px}
+  .day{aspect-ratio:1.2;background:var(--pink);border-radius:8px;border:1.5px solid transparent;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:13px;cursor:pointer}
+  .day:hover{border-color:#E2B7B7}
+  .day.out{background:transparent;color:#C4C3BE;cursor:default}
+  .day.out:hover{border-color:transparent}
+  .day.today{background:var(--lav);font-weight:600}
+  .day.selected{border-color:var(--red)}
+  .marks{display:flex;gap:4px;align-items:center;min-height:14px;font-size:12px;line-height:1}
+
+  /* rows */
+  .frow{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;margin-bottom:8px;background:#FAFAF8}
+  .frow .nm{font-weight:600;font-size:13px}
+  .frow .sb{font-size:11.5px;color:var(--muted);margin-top:2px}
+  .act{display:flex;align-items:center;gap:8px;flex-shrink:0}
+  .sec-label{font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin:16px 0 8px}
+  .sec-label:first-of-type{margin-top:0}
+
+  .badge{font-size:11px;font-weight:500;padding:3px 10px;border-radius:999px;white-space:nowrap;display:inline-block}
+  .b-gray{background:#EEEDE9;color:#5F5E5A}
+  .b-blue{background:#E3EEFB;color:#1E5FA8}
+  .b-amber{background:#FBEFD5;color:#8A5A0B}
+  .b-yellow{background:#FFF1C2;color:#7A5C00}
+  .b-red{background:#FCE4E4;color:#A32D2D}
+  .b-green{background:#E4F2D8;color:#3B6D11}
+
+  .btn{border:1px solid var(--navy);background:#fff;color:var(--navy);border-radius:999px;padding:6px 14px;font-size:12px;cursor:pointer;white-space:nowrap}
+  .btn:hover{background:#F5F5F3}
+  .btn:disabled{opacity:.5;cursor:default}
+  .btn.sm{padding:4px 10px;font-size:11px}
+
+  /* forms */
+  label{display:block;font-size:12px;font-weight:600;margin:12px 0 4px}
+  input,select,textarea{width:100%;border:1px solid var(--line);border-radius:8px;padding:9px 10px;font:inherit;background:#fff}
+  textarea{min-height:56px;resize:vertical}
+  input:focus,select:focus,textarea:focus{outline:2px solid #E6B8B8;border-color:#D79A9A}
+  .hint{font-size:11.5px;color:var(--muted);margin-top:4px}
+  .err{color:#A32D2D;font-size:12px;min-height:16px;margin:10px 0 0}
+  .row-between{display:flex;justify-content:space-between;align-items:center;gap:12px}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+
+  .mapbox{height:230px;border-radius:10px;background:var(--pink);display:flex;align-items:center;justify-content:center;color:var(--muted);margin-bottom:12px;overflow:hidden}
+  .stat{border:1px solid var(--line);border-radius:10px;padding:10px 14px;min-width:130px}
+  .stat .lbl{display:block;font-size:11px;color:var(--muted)}
+  .stat .val{font-size:18px;font-weight:600}
+
+  /* waybill blocks */
+  .sec{margin-top:16px}
+  .lbl-strong{font-size:12px;font-weight:600}
+  .stop{border:1px solid var(--line);border-radius:10px;padding:4px 14px 14px;margin-top:10px;background:#FFFEFD}
+  .stop.extra{background:#EFEAFB;border-color:#DDD5F5}
+  .stop-h{display:flex;justify-content:space-between;align-items:center;margin-top:10px;font-size:11px;font-weight:700;letter-spacing:.4px;color:var(--red)}
+  .stop.extra .stop-h{color:#5B3FB0}
+  .x{border:0;background:transparent;font-size:18px;line-height:1;cursor:pointer;color:var(--muted)}
+  .total{display:flex;justify-content:space-between;margin:16px 4px 4px;font-size:13px}
+  .total strong{font-size:16px}
+
+  #toast{position:fixed;right:20px;bottom:20px;background:var(--navy);color:#fff;padding:10px 16px;border-radius:10px;font-size:13px;opacity:0;pointer-events:none;transition:opacity .2s;max-width:360px}
+  #toast.show{opacity:1}
+  #toast.err{background:#A32D2D}
+</style>
+</head>
+<body>
+<div class="topbar">FleetTrack</div>
+<div class="layout">
+  <nav class="rail" id="rail"></nav>
+  <main class="content" id="content"></main>
+</div>
+<div id="toast"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+// ---------- helpers ----------
+const $ = (s, r = document) => r.querySelector(s);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const peso = (n) => '₱' + Number(n || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const pesoShort = (n) => '₱' + Number(n || 0).toLocaleString('en-PH');
+const pad = (n) => String(n).padStart(2, '0');
+const ymd = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+const ym = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}`;
+const parseMoney = (v) => { const n = parseFloat(String(v).replace(/[₱,\s]/g, '')); return Number.isFinite(n) ? n : NaN; };
+const fmtDay = (d) => new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+const fmtDateTime = (iso) => {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+};
+const daysAgo = (iso) => {
+  const a = new Date(iso); const b = new Date();
+  const da = new Date(a.getFullYear(), a.getMonth(), a.getDate());
+  const db = new Date(b.getFullYear(), b.getMonth(), b.getDate());
+  return Math.round((db - da) / 86400000);
+};
+
+async function api(path, opts = {}) {
+  const res = await fetch(path, {
+    method: opts.method || 'GET',
+    headers: { 'Content-Type': 'application/json' },
+    body: opts.body ? JSON.stringify(opts.body) : undefined,
+  });
+  let data = null;
+  try { data = await res.json(); } catch (e) { /* no body */ }
+  if (!res.ok) throw new Error((data && data.error) || `Request failed (${res.status})`);
+  return data;
+}
+
+let toastTimer;
+function toast(msg, isErr) {
+  const t = $('#toast');
+  t.textContent = msg;
+  t.className = 'show' + (isErr ? ' err' : '');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => (t.className = ''), 4000);
+}
+
+// ---------- state & navigation ----------
+const TODAY = new Date();
+const state = {
+  view: 'home',
+  month: new Date(TODAY.getFullYear(), TODAY.getMonth(), 1),
+  selectedDate: null,
+  ctx: {},
+};
+
+let pollTimer = null, map = null, truckMarker = null, destMarker = null, fitted = false;
+function stopPolling() {
+  clearInterval(pollTimer); pollTimer = null;
+  if (map) { map.remove(); map = null; }
+  truckMarker = destMarker = null; fitted = false;
+}
+function go(view, ctx = {}) { state.view = view; state.ctx = ctx; render(); }
+
+const ICONS = {
+  home: '<path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/><path d="M10 20v-6h4v6"/>',
+  trucks: '<rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/>',
+  drivers: '<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
+  history: '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>',
+  billing: '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h6"/>',
+  invoices: '<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/>',
+};
+function renderRail() {
+  const groups = { 
+    home: ['home', 'createTrip', 'active', 'waybill'], 
+    trucks: ['trucks', 'truckDetail'], 
+    drivers: ['drivers'], 
+    history: ['history', 'historyDetail'], 
+    billing: ['billing'], 
+    invoices: ['invoices'] 
+  };
+  const items = [
+    ['home', 'Home'], ['trucks', 'Trucks'], ['drivers', 'Drivers'],
+    ['history', 'History'], ['billing', 'Awaiting billing'], ['invoices', 'Invoices']
+  ];
+  $('#rail').innerHTML = items.map(([k, label]) =>
+    `<button title="${label}" data-nav="${k}" class="${groups[k].includes(state.view) ? 'active' : ''}"><svg viewBox="0 0 24 24">${ICONS[k]}</svg></button>`).join('');
+}
+$('#rail').onclick = (e) => { const b = e.target.closest('[data-nav]'); if (b) go(b.dataset.nav); };
+
+const TRUCK = {
+  idle: ['Available', 'b-gray'], dispatched: ['Dispatched', 'b-amber'],
+  in_transit: ['In Transit', 'b-blue'], awaiting_billing: ['Awaiting Billing', 'b-red'],
+};
+const TRIP = {
+  in_progress: ['Ongoing', 'b-blue'], delivered: ['Pending Waybill', 'b-yellow'],
+  awaiting_billing: ['Awaiting Invoice', 'b-gray'], completed: ['Billed', 'b-green'],
+};
+const badge = ([label, cls]) => `<span class="badge ${cls}">${label}</span>`;
+
+async function render() {
+  stopPolling();
+  renderRail();
+  const c = $('#content');
+  c.onclick = c.onchange = c.oninput = null;
+  try {
+    if (state.view === 'home') await viewHome(c);
+    else if (state.view === 'trucks') await viewTrucks(c);
+    else if (state.view === 'truckDetail') await viewTruckDetail(c);
+    else if (state.view === 'drivers') await viewDrivers(c);
+    else if (state.view === 'history') await viewHistory(c);
+    else if (state.view === 'historyDetail') await viewHistoryDetail(c);
+    else if (state.view === 'createTrip') await viewCreateTrip(c);
+    else if (state.view === 'active') await viewActive(c);
+    else if (state.view === 'waybill') await viewWaybill(c);
+    else if (state.view === 'billing') await viewBilling(c);
+    else if (state.view === 'invoices') await viewInvoices(c);
+  } catch (e) {
+    c.innerHTML = `<div class="card narrow"><h2>Couldn't load this page</h2><p class="sub">${esc(e.message)}</p></div>`;
+  }
+}
+
+// ---------- HOME: calendar + fleet overview ----------
+function truckRow(t) {
+  const sub = t.status === 'idle' ? 'Idle at Depot'
+    : t.status === 'dispatched' ? 'Dispatched — awaiting destination'
+    : t.status === 'in_transit' ? (t.client_name || 'On the road')
+    : 'Returned to Office';
+  let btn = '';
+  if (t.status === 'idle') btn = `<button class="btn" data-act="dispatch" data-id="${t.id}">Dispatch</button>`;
+  else if (t.status === 'dispatched') btn = `<button class="btn" data-act="report" data-id="${t.id}" data-plate="${esc(t.plate_number)}">Report Destination</button>`;
+  else if (t.status === 'in_transit' && t.trip_id) btn = `<button class="btn" data-act="viewtrip" data-id="${t.trip_id}">View Trip</button>`;
+  else if (t.status === 'awaiting_billing' && t.trip_id) btn = `<button class="btn" data-act="waybill" data-id="${t.trip_id}">Submit Waybill</button>`;
+  return `<div class="frow"><div><div class="nm">${esc(t.plate_number)} ${t.driver_name ? '· ' + esc(t.driver_name) : ''}</div><div class="sb">${esc(sub)}</div></div>
+    <div class="act">${badge(TRUCK[t.status] || [t.status, 'b-gray'])}${btn}</div></div>`;
+}
+
+function tripRow(t, sub) {
+  let btn = '';
+  if (t.status === 'delivered') btn = `<button class="btn" data-act="waybill" data-id="${t.id}">Submit Waybill</button>`;
+  else if (t.status === 'in_progress') btn = `<button class="btn" data-act="viewtrip" data-id="${t.id}">View Trip</button>`;
+  
+  return `<div class="frow">
+    <div>
+      <div class="nm">${esc(t.plate_number)} — ${esc(t.client_name || 'No client yet')}</div>
+      <div class="sb">${esc(sub)}</div>
+      <div class="sb" style="color:#A32D2D; font-weight:500; margin-top:4px;">Booked on: ${fmtDateTime(t.created_at)}</div>
+    </div>
+    <div class="act">${badge(TRIP[t.status] || [t.status, 'b-gray'])}${btn}</div>
+  </div>`;
+}
+function calendarHtml(cal) {
+  const byDay = {};
+  cal.forEach((r) => (byDay[r.day] = r));
+  const first = state.month;
+  const offset = first.getDay();
+  const dim = new Date(first.getFullYear(), first.getMonth() + 1, 0).getDate();
+  const weeks = Math.ceil((offset + dim) / 7);
+  const start = new Date(first.getFullYear(), first.getMonth(), 1 - offset);
+  const todayKey = ymd(TODAY);
+
+  let cells = '';
+  for (let i = 0; i < weeks * 7; i++) {
+    const d = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i);
+    const key = ymd(d);
+    const inMonth = d.getMonth() === first.getMonth();
+    const info = inMonth ? byDay[key] : null;
+    
+    let marks = '';
+    if (info) {
+      if (info.ongoing > 0) marks += '<span title="Ongoing" style="font-size:10px; margin:0 1px;">🚚</span>';
+      if (info.pending_waybill > 0) marks += '<span title="Pending Waybill" style="font-size:10px; margin:0 1px;">🟡</span>';
+      if (info.awaiting_billing > 0) marks += '<span title="Awaiting Billing" style="font-size:10px; margin:0 1px;">💰</span>';
+      if (info.completed > 0) marks += '<span title="Completed" style="font-size:10px; margin:0 1px;">✅</span>';
+    }
+
+    const cls = ['day', inMonth ? '' : 'out', key === todayKey ? 'today' : '', key === state.selectedDate ? 'selected' : ''].join(' ');
+    cells += `<div class="${cls}" ${inMonth ? `data-act="day" data-date="${key}"` : ''}>${d.getDate()}<div class="marks" style="gap:2px; flex-wrap:wrap; justify-content:center;">${marks}</div></div>`;
+  }
+  
+  const title = first.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+  
+  return `<div class="card">
+    <div class="cal-head">
+      <div>
+        <h2>${title}</h2>
+        <p class="sub">Tap a day to see that day's trips</p>
+      </div>
+      <div class="legend" style="flex-wrap:wrap; gap:6px; max-width: 400px; justify-content: flex-end;">
+        <span class="badge b-blue" style="font-size:11px;">🚚 Ongoing</span>
+        <span class="badge b-yellow" style="font-size:11px;">🟡 Pending Waybill</span>
+        <span class="badge b-amber" style="font-size:11px;">💰 Awaiting Billing</span>
+        <span class="badge b-green" style="font-size:11px;">✅ Completed</span>
+      </div>
+    </div>
+    <div class="cal-nav">
+      <button data-act="prev" title="Previous month">‹</button>
+      <button class="today-btn" data-act="today">Today</button>
+      <button data-act="next" title="Next month">›</button>
+    </div>
+    <div class="cal">
+      ${['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((d) => `<div class="dow">${d}</div>`).join('')}
+      ${cells}
+    </div>
+  </div>`;
+}
+
+function panelHtml(trucks, pending, dayTrips) {
+  if (state.selectedDate) {
+    const d = new Date(state.selectedDate + 'T00:00:00');
+    const label = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    const body = dayTrips.length
+      ? dayTrips.map((t) => tripRow(t, t.waybill_number ? `Waybill ${t.waybill_number}` : 'No waybill yet')).join('')
+      : '<p class="muted">No trips were booked on this day.</p>';
+    
+    const trucksHtml = trucks.length ? trucks.map(truckRow).join('') : '<p class="muted">No trucks available. Add one in the Trucks tab.</p>';
+
+    return `<div class="card">
+      <button class="btn sm" data-act="back" style="margin-bottom:12px;">← Back to overview</button>
+      <h2>${label} — Trips</h2><p class="sub">Trips booked on this day</p>
+      ${body}
+      
+      <div class="sec-label" style="margin-top:24px;">Fleet Actions</div>
+      ${trucksHtml}
+    </div>`;
+  }
+  
+  const todayLabel = TODAY.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  const currentIds = new Set(trucks.filter((t) => ['in_transit', 'awaiting_billing'].includes(t.status)).map((t) => t.trip_id));
+  const older = pending.filter((t) => !currentIds.has(t.id));
+  const trucksHtml = trucks.length ? trucks.map(truckRow).join('') : '<p class="muted">No trucks yet. Add one in the Trucks tab.</p>';
+  const olderHtml = older.length
+    ? older.map((t) => { const n = daysAgo(t.started_at); return tripRow(t, `Booked ${fmtDay(t.started_at)} · ${n === 0 ? 'today' : n + (n === 1 ? ' day ago' : ' days ago')}`); }).join('')
+    : '<p class="muted">Nothing pending.</p>';
+  return `<div class="card"><h2>Fleet Overview (Today, ${todayLabel})</h2><p class="sub">Current status of active trucks</p>
+    ${trucksHtml}<div class="sec-label">Older trips awaiting waybill</div>${olderHtml}</div>`;
+}
+
+async function viewHome(c) {
+  const [trucks, pending, cal, dayTrips] = await Promise.all([
+    api('/api/trucks'),
+    api('/api/trips/pending-waybill'),
+    api('/api/calendar?month=' + ym(state.month)),
+    state.selectedDate ? api('/api/trips?date=' + state.selectedDate) : Promise.resolve([]),
+  ]);
+  c.innerHTML = `<div class="home">${calendarHtml(cal)}${panelHtml(trucks, pending, dayTrips)}</div>`;
+  c.onclick = async (e) => {
+    const el = e.target.closest('[data-act]');
+    if (!el) return;
+    const { act, id, date, plate } = el.dataset;
+    try {
+      if (act === 'day') { state.selectedDate = state.selectedDate === date ? null : date; render(); }
+      else if (act === 'back') { state.selectedDate = null; render(); }
+      else if (act === 'prev') { state.month = new Date(state.month.getFullYear(), state.month.getMonth() - 1, 1); state.selectedDate = null; render(); }
+      else if (act === 'next') { state.month = new Date(state.month.getFullYear(), state.month.getMonth() + 1, 1); state.selectedDate = null; render(); }
+      else if (act === 'today') { state.month = new Date(TODAY.getFullYear(), TODAY.getMonth(), 1); state.selectedDate = null; render(); }
+      else if (act === 'dispatch') { el.disabled = true; await api('/api/dispatch', { method: 'POST', body: { truck_id: +id } }); toast('Truck dispatched'); render(); }
+      else if (act === 'report') go('createTrip', { truckId: +id, plate });
+      else if (act === 'viewtrip') go('active', { tripId: +id });
+      else if (act === 'waybill') go('waybill', { tripId: +id });
+    } catch (err) { toast(err.message, true); render(); }
+  };
+}
+
+// ---------- CREATE TRIP ----------
+async function viewCreateTrip(c) {
+  const clients = await api('/api/clients');
+  c.innerHTML = `<div class="card narrow">
+    <h2>Create Trip — ${esc(state.ctx.plate || '')}</h2><p class="sub">Log destination details reported by driver</p>
+    <label>Client/Destination</label>
+    <input id="ct-client" list="client-list" placeholder="e.g. Metro Goods Co." autocomplete="off">
+    <datalist id="client-list">${clients.map((x) => `<option value="${esc(x.company_name)}">`).join('')}</datalist>
+    <label>Address <span class="muted">(optional)</span></label>
+    <input id="ct-address" placeholder="e.g. 456 Industrial Ave, Makati">
+    <div class="hint">Used to estimate arrival time. Without it, ETA will show "—". Saved clients reuse their last address.</div>
+    <label>Allowance Amount</label>
+    <input id="ct-allow" inputmode="decimal" placeholder="2,000.00">
+    <p class="err" id="ct-err"></p>
+    <button class="btn" id="ct-go">Create Trip</button>
+  </div>`;
+  $('#ct-go').onclick = async () => {
+    const client_name = $('#ct-client').value.trim();
+    const allowance = parseMoney($('#ct-allow').value);
+    const err = $('#ct-err');
+    if (!client_name) { err.textContent = 'Enter the client / destination.'; return; }
+    if (Number.isNaN(allowance)) { err.textContent = 'Enter the allowance amount.'; return; }
+    err.textContent = '';
+    $('#ct-go').disabled = true;
+    try {
+      const r = await api('/api/trips', { method: 'POST', body: { truck_id: state.ctx.truckId, client_name, address: $('#ct-address').value.trim(), allowance_amount: allowance } });
+      toast('Trip created');
+      go('active', { tripId: r.trip_id });
+    } catch (e) { err.textContent = e.message; $('#ct-go').disabled = false; }
+  };
+}
+
+// ---------- ACTIVE TRIP ----------
+const fmtEta = (iso) => {
+  if (!iso) return '—';
+  const ms = new Date(iso) - Date.now();
+  if (ms <= 0) return 'Arriving';
+  const m = Math.round(ms / 60000), h = Math.floor(m / 60);
+  return '~' + (h ? h + 'h, ' : '') + (m % 60) + 'm';
+};
+
+function updateActive(trip) {
+  $('#eta').textContent = fmtEta(trip.estimated_arrival);
+  const pos = trip.latest_position;
+  const hasDest = trip.destination_lat != null && trip.destination_lng != null;
+  if (!map) return;
+  const pts = [];
+  if (pos) {
+    const ll = [pos.latitude, pos.longitude]; pts.push(ll);
+    if (!truckMarker) truckMarker = L.circleMarker(ll, { radius: 9, color: '#C62828', fillColor: '#C62828', fillOpacity: 0.9 }).addTo(map).bindTooltip('Truck');
+    else truckMarker.setLatLng(ll);
+  }
+  if (hasDest) {
+    const ll = [trip.destination_lat, trip.destination_lng]; pts.push(ll);
+    if (!destMarker) destMarker = L.circleMarker(ll, { radius: 8, color: '#141B2D', fillColor: '#141B2D', fillOpacity: 0.9 }).addTo(map).bindTooltip('Destination');
+  }
+  if (pts.length && !fitted) {
+    fitted = true;
+    if (pts.length === 1) map.setView(pts[0], 13); else map.fitBounds(pts, { padding: [30, 30] });
+  }
+}
+
+async function viewActive(c) {
+  const id = state.ctx.tripId;
+  const trip = await api('/api/trips/' + id);
+  const delivered = trip.status === 'delivered';
+  c.innerHTML = `<div class="card narrow">
+    <h2>Active Trip — ${esc(trip.plate_number)}</h2><p class="sub">Heading to ${esc(trip.client_name || 'destination')}</p>
+    <div id="map" class="mapbox">Live GPS Map</div>
+    <div class="row-between">
+      <div class="stat"><span class="lbl">ETA</span><span class="val" id="eta">—</span></div>
+      ${trip.status === 'in_progress' ? '<button class="btn" id="btn-delivered">Mark Delivered</button>'
+        : delivered ? '<button class="btn" id="btn-waybill">Submit Waybill</button>'
+        : `<span>${badge(TRIP[trip.status] || [trip.status, 'b-gray'])}</span>`}
+    </div>
+    <div class="hint" id="map-hint"></div>
+  </div>`;
+
+  if (typeof L === 'undefined') { $('#map').textContent = 'Map unavailable (no internet connection to the map library).'; }
+  else {
+    $('#map').textContent = '';
+    map = L.map('map').setView([12.88, 121.77], 6);
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; OpenStreetMap contributors' }).addTo(map);
+  }
+  if (!trip.latest_position) $('#map-hint').textContent = 'No GPS fix from this truck yet.';
+  updateActive(trip);
+
+  const bd = $('#btn-delivered');
+  if (bd) bd.onclick = async () => {
+    bd.disabled = true;
+    try { await api(`/api/trips/${id}/delivered`, { method: 'PATCH' }); toast('Marked as delivered'); state.selectedDate = null; go('home'); }
+    catch (e) { toast(e.message, true); bd.disabled = false; }
+  };
+  const bw = $('#btn-waybill');
+  if (bw) bw.onclick = () => go('waybill', { tripId: id });
+
+  pollTimer = setInterval(async () => { try { updateActive(await api('/api/trips/' + id)); } catch (e) { /* keep last values */ } }, 15000);
+}
+
+// ---------- SUBMIT WAYBILL ----------
+function stopBlock(type, areas, fee) {
+  if (type === 'extra') {
+    return `<div class="stop extra" data-type="extra">
+      <div class="stop-h"><span>EXTRA DROP - ${pesoShort(fee)}</span><button class="x" data-act="rm" title="Remove">×</button></div>
+      <label>Client Name</label><input class="f-client">
+      <div class="two">
+        <div><label>Drop Type</label><select class="f-drop"><option>Drop</option><option>Haul</option></select></div>
+        <div><label>Rate (₱)</label><input class="f-rate" inputmode="decimal" value="${Number(fee).toFixed(2)}"></div>
+      </div>
+      <label>Notes</label><textarea class="f-notes"></textarea></div>`;
+  }
+  const opts = areas.map((a) => `<option value="${a.id}" data-rate="${a.rate}">${esc(a.name)} — Zone ${esc(a.zone)} - ${pesoShort(a.rate)}</option>`).join('');
+  return `<div class="stop" data-type="${type}">
+    <div class="stop-h"><span>${type === 'main' ? 'MAIN DESTINATION' : 'ADDITIONAL DROP'}</span>${type === 'main' ? '' : '<button class="x" data-act="rm" title="Remove">×</button>'}</div>
+    <label>Client Name</label><input class="f-client">
+    <label>Address</label><input class="f-address">
+    <label>Destination Area</label><select class="f-area"><option value="">Select area…</option>${opts}</select>
+    <div class="two">
+      <div><label>DR Number</label><input class="f-dr" placeholder="e.g. DR-00123"></div>
+      <div><label>Rate (₱)</label><input class="f-rate" inputmode="decimal" placeholder="0.00"></div>
+    </div>
+    <div class="two">
+      <div><label>Waybill</label><select class="f-wtype"><option>Waybill</option><option>Double Waybill</option></select></div>
+      <div><label>Drop Type</label><select class="f-drop"><option>Haul</option><option>Drop</option></select></div>
+    </div>
+    <label>Notes</label><textarea class="f-notes"></textarea></div>`;
+}
+
+function updateTotal() {
+  const total = [...document.querySelectorAll('.stop .f-rate')].reduce((s, i) => s + (parseMoney(i.value) || 0), 0);
+  const el = $('#wb-total'); if (el) el.textContent = peso(total);
+}
+
+async function viewWaybill(c) {
+  const [trip, areas, cfg] = await Promise.all([api('/api/trips/' + state.ctx.tripId), api('/api/areas'), api('/api/config')]);
+  const fee = Number(cfg.extra_drop_fee);
+  c.innerHTML = `<div class="card wide">
+    <h2>Submit Waybill — ${esc(trip.plate_number)}</h2>
+    <p class="sub">Pick an area for each stop, or add an extra drop at ${pesoShort(fee)}.</p>
+    <label>Waybill Number</label><input id="wb-num" placeholder="e.g. WB-109842">
+    <div class="row-between sec"><span class="lbl-strong">Stops on Receipt</span>
+      <span><button class="btn sm" data-act="add-additional">+ Add Drop off</button> <button class="btn sm" data-act="add-extra">+ Add Extra Drop (${fee})</button></span></div>
+    <div id="stops"></div>
+    <div class="total"><span>Total Waybill Rate</span><strong id="wb-total">₱0.00</strong></div>
+    <p class="err" id="wb-err"></p>
+    <button class="btn" id="wb-submit">Submit Waybill</button>
+  </div>`;
+
+  const stopsEl = $('#stops');
+  stopsEl.insertAdjacentHTML('beforeend', stopBlock('main', areas, fee));
+  const main = stopsEl.querySelector('.stop');
+  main.querySelector('.f-client').value = trip.client_name || '';
+  main.querySelector('.f-address').value = trip.destination_address || '';
+  updateTotal();
+
+  c.onclick = (e) => {
+    const el = e.target.closest('[data-act]'); if (!el) return;
+    if (el.dataset.act === 'add-additional') stopsEl.insertAdjacentHTML('beforeend', stopBlock('additional', areas, fee));
+    else if (el.dataset.act === 'add-extra') stopsEl.insertAdjacentHTML('beforeend', stopBlock('extra', areas, fee));
+    else if (el.dataset.act === 'rm') el.closest('.stop').remove();
+    updateTotal();
+  };
+  c.onchange = (e) => {
+    if (!e.target.classList.contains('f-area')) return;
+    const opt = e.target.selectedOptions[0];
+    const rate = opt && opt.dataset.rate;
+    if (rate) { e.target.closest('.stop').querySelector('.f-rate').value = Number(rate).toFixed(2); updateTotal(); }
+  };
+  c.oninput = (e) => { if (e.target.classList.contains('f-rate')) updateTotal(); };
+
+  $('#wb-submit').onclick = async () => {
+    const err = $('#wb-err');
+    const val = (el, sel) => { const n = el.querySelector(sel); return n ? n.value.trim() : ''; };
+    const wb = $('#wb-num').value.trim();
+    if (!wb) { err.textContent = 'Enter the waybill number.'; return; }
+    const stops = [...stopsEl.querySelectorAll('.stop')].map((el) => ({
+      stop_type: el.dataset.type,
+      client_name: val(el, '.f-client'),
+      address: val(el, '.f-address'),
+      area_id: val(el, '.f-area') ? +val(el, '.f-area') : null,
+      dr_number: val(el, '.f-dr'),
+      rate: parseMoney(val(el, '.f-rate')),
+      waybill_type: val(el, '.f-wtype'),
+      drop_type: val(el, '.f-drop'),
+      notes: val(el, '.f-notes'),
+    }));
+    for (const [i, s] of stops.entries()) {
+      const where = s.stop_type === 'main' ? 'the main destination' : `stop ${i + 1}`;
+      if (!s.client_name) { err.textContent = `Enter the client name for ${where}.`; return; }
+      if (s.stop_type !== 'extra' && !s.area_id) { err.textContent = `Pick a destination area for ${where}.`; return; }
+      if (Number.isNaN(s.rate)) { err.textContent = `Enter the rate for ${where}.`; return; }
+    }
+    err.textContent = '';
+    $('#wb-submit').disabled = true;
+    try {
+      const r = await api(`/api/trips/${state.ctx.tripId}/waybill`, { method: 'PATCH', body: { waybill_number: wb, stops } });
+      toast(`Waybill saved — total ${peso(r.total)}`);
+      state.selectedDate = null;
+      go('home');
+    } catch (e) { err.textContent = e.message; $('#wb-submit').disabled = false; }
+  };
+}
+
+// ---------- BILLING QUEUE ----------
+async function viewBilling(c) {
+  const rows = await api('/api/trips/awaiting-billing');
+  c.innerHTML = `<div class="card wide"><h2>Awaiting Billing</h2><p class="sub">Trips with a waybill, ready to invoice</p>
+    ${rows.length ? rows.map((t) => `<div class="frow"><div><div class="nm">${esc(t.plate_number)} — ${esc(t.client_name || '')}</div>
+      <div class="sb">Waybill ${esc(t.waybill_number)} · ${peso(t.waybill_total)}</div></div>
+      <button class="btn" data-act="invoice" data-id="${t.id}">Generate Invoice (${pesoShort(t.waybill_total)})</button></div>`).join('')
+      : '<p class="muted">Nothing waiting on billing.</p>'}</div>`;
+  c.onclick = async (e) => {
+    const b = e.target.closest('[data-act="invoice"]'); if (!b) return;
+    b.disabled = true;
+    try { await api(`/api/trips/${b.dataset.id}/invoice`, { method: 'POST' }); toast('Invoice created'); render(); }
+    catch (err) { toast(err.message, true); b.disabled = false; }
+  };
+}
+
+// ---------- INVOICES ----------
+async function viewInvoices(c) {
+  const rows = await api('/api/invoices');
+  c.innerHTML = `<div class="card wide"><h2>Invoices</h2><p class="sub">Payment status per invoice</p>
+    ${rows.length ? rows.map((i) => `<div class="frow"><div><div class="nm">INV-${String(i.id).padStart(4, '0')} — ${esc(i.client_name || '')}</div>
+      <div class="sb">${peso(i.amount)} · Waybill ${esc(i.waybill_number || '—')} · issued ${fmtDay(i.issued_at)}</div></div>
+      <div class="act">${badge(i.status === 'paid' ? ['Paid', 'b-green'] : ['Unpaid', 'b-amber'])}
+      ${i.status === 'paid' ? '' : `<button class="btn" data-act="pay" data-id="${i.id}">Mark Paid</button>`}</div></div>`).join('')
+      : '<p class="muted">No invoices yet.</p>'}</div>`;
+  c.onclick = async (e) => {
+    const b = e.target.closest('[data-act="pay"]'); if (!b) return;
+    b.disabled = true;
+    try { await api(`/api/invoices/${b.dataset.id}/pay`, { method: 'POST' }); toast('Marked as paid'); render(); }
+    catch (err) { toast(err.message, true); b.disabled = false; }
+  };
+}
+
+// ---------- TRUCKS & DRIVERS ----------
+async function viewTrucks(c) {
+  const [trucks, drivers] = await Promise.all([api('/api/trucks'), api('/api/drivers')]);
+  
+  c.innerHTML = `<div class="card wide"><h2>Trucks</h2><p class="sub">Manage fleet and assignments</p>
+    ${trucks.map(t => `
+      <div class="frow">
+        <div>
+          <div class="nm">${esc(t.plate_number)} <span class="muted" style="font-weight:400; font-size:12px;">(${esc(t.make_model || 'No model set')} ${t.year ? t.year : ''})</span></div>
+          <div class="sb">Driver: <strong>${esc(t.driver_name || 'Unassigned')}</strong> · Odometer: ${t.odometer_km ? t.odometer_km.toLocaleString() + ' km' : '—'}</div>
+        </div>
+        <div class="act">
+          <select id="assign-${t.id}" style="width:130px; padding:4px; font-size:12px; border-radius:6px; border:1px solid #ccc;">
+            <option value="">Unassigned</option>
+            ${drivers.map(d => `<option value="${d.id}" ${t.driver_id === d.id ? 'selected' : ''}>${esc(d.name)}</option>`).join('')}
+          </select>
+          <button class="btn sm" data-act="assign" data-id="${t.id}">Assign</button>
+          <button class="btn sm" data-act="view-truck" data-id="${t.id}" style="background:var(--navy); color:#fff;">View Details</button>
+          <button class="btn sm" data-act="delete-truck" data-id="${t.id}" style="color:#A32D2D; border-color:#A32D2D;">Delete</button>
+        </div>
+      </div>
+    `).join('')}
+    
+    <div class="sec-label" style="margin-top:24px;">Add a New Truck</div>
+    <div style="display:flex; gap:8px;">
+      <div style="flex:1;"><input id="nt-plate" placeholder="Plate Number"></div>
+      <div style="flex:1;"><input id="nt-device" placeholder="Device ID"></div>
+      <div style="flex:1;"><input id="nt-model" placeholder="Vehicle Model (e.g. Isuzu Elf)"></div>
+      <button class="btn" data-act="add-truck">Add</button>
+    </div>
+  </div>`;
+
+  c.onclick = async (e) => {
+    const b = e.target.closest('[data-act]'); if (!b) return;
+    
+    if (b.dataset.act === 'assign') {
+      const id = b.dataset.id;
+      const driverId = $(`#assign-${id}`).value;
+      await api(`/api/trucks/${id}/driver`, { method: 'PUT', body: { driver_id: driverId || null } });
+      toast('Driver assigned'); render();
+    }
+    
+    if (b.dataset.act === 'add-truck') {
+      const plate = $('#nt-plate').value.trim();
+      const device = $('#nt-device').value.trim();
+      const model = $('#nt-model').value.trim();
+      
+      if (!plate || !device) return toast('Plate and Device ID are required', true);
+      
+      await api('/api/trucks', { method: 'POST', body: { plate_number: plate, device_id: device, make_model: model } });
+      toast('Truck added'); render();
+    }
+    
+    if (b.dataset.act === 'view-truck') {
+      go('truckDetail', { truckId: b.dataset.id });
+    }
+
+    if (b.dataset.act === 'delete-truck') {
+      if (!confirm('Are you sure you want to delete this truck? This cannot be undone.')) return;
+      try {
+        await api('/api/trucks/' + b.dataset.id, { method: 'DELETE' });
+        toast('Truck deleted');
+        render();
+      } catch (err) {
+        toast(err.message, true);
+      }
+    }
+  };
+}
+
+async function viewTruckDetail(c) {
+  const id = state.ctx.truckId;
+  const [t, logs] = await Promise.all([
+    api('/api/trucks/' + id),
+    api('/api/trucks/' + id + '/maintenance')
+  ]);
+  
+  // Calculate total cost and last date from logs
+  const totalCost = logs.reduce((sum, log) => sum + Number(log.cost || 0), 0);
+  const lastDate = logs.length > 0 ? logs[0].date.split('T')[0] : null;
+
+  c.innerHTML = `<div class="card" style="max-width: 1000px;">
+    <button class="btn sm" data-act="back" style="margin-bottom:12px;">← Back to Trucks</button>
+    <h2>Truck Details — ${esc(t.plate_number)}</h2>
+    <p class="sub">Manage vehicle model and maintenance logs</p>
+
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; align-items: start;">
+      
+      <!-- LEFT SIDE: Truck Info -->
+      <div style="border-right: 1px solid var(--line); padding-right: 24px;">
+        <h3 style="font-size:14px; margin-bottom:12px;">Vehicle Information</h3>
+        
+        <div class="two">
+          <div>
+            <label>Vehicle Model</label>
+            <input id="td-model" value="${esc(t.make_model || '')}" placeholder="e.g. Isuzu Elf NPR">
+          </div>
+          <div>
+            <label>Year</label>
+            <input id="td-year" type="number" value="${t.year || ''}" placeholder="e.g. 2021">
+          </div>
+        </div>
+
+        <div class="two">
+          <div>
+            <label>Odometer (km)</label>
+            <input id="td-odometer" type="number" value="${t.odometer_km || ''}" placeholder="e.g. 54300">
+          </div>
+          <div>
+            <label>Next Service Due</label>
+            <input id="td-next-service" type="date" value="${t.next_service_due ? t.next_service_due.split('T')[0] : ''}">
+          </div>
+        </div>
+
+        <div class="row-between" style="background:#FAFAF8; padding:12px; border-radius:8px; margin-top:16px;">
+          <div>
+            <span class="muted">Last Maintained</span><br>
+            <strong>${lastDate ? lastDate : '—'}</strong>
+          </div>
+          <div>
+            <span class="muted">Total Maintenance Cost</span><br>
+            <strong>${peso(totalCost)}</strong>
+          </div>
+        </div>
+
+        <p class="err" id="td-err" style="margin-top:12px;"></p>
+        <button class="btn" id="td-save" style="margin-top:8px;">Save Vehicle Info</button>
+      </div>
+
+      <!-- RIGHT SIDE: Maintenance History & Add Form -->
+      <div>
+        <h3 style="font-size:14px; margin-bottom:12px;">Maintenance History</h3>
+        
+        <!-- Form to add new log -->
+        <div style="background:#F5F5F3; padding:12px; border-radius:8px; margin-bottom:16px;">
+          <label style="margin-top:0;">Log New Maintenance</label>
+          <div class="two" style="margin-bottom:8px;">
+            <input id="ml-date" type="date" value="${new Date().toISOString().split('T')[0]}">
+            <input id="ml-cost" type="number" placeholder="Cost (₱)" step="0.01">
+          </div>
+          <input id="ml-desc" placeholder="Parts replaced / Notes" style="margin-bottom:8px;">
+          <button class="btn sm" id="ml-add" style="width:100%;">+ Add Record</button>
+        </div>
+
+        <!-- List of past logs -->
+        <div style="max-height: 400px; overflow-y: auto;">
+          ${logs.length ? logs.map(log => `
+            <div class="frow" style="align-items: flex-start; padding: 12px;">
+              <div>
+                <div class="nm">${fmtDay(log.date)}</div>
+                <div class="sb" style="margin-top: 4px;">${esc(log.description || 'No description')}</div>
+              </div>
+              <div class="act">
+                <strong>${peso(log.cost)}</strong>
+              </div>
+            </div>
+          `).join('') : '<p class="muted" style="text-align:center;">No maintenance records yet.</p>'}
+        </div>
+      </div>
+
+    </div>
+  </div>`;
+
+  // Save basic truck info
+  $('#td-save').onclick = async () => {
+    const btn = $('#td-save');
+    btn.disabled = true;
+    try {
+      await api('/api/trucks/' + t.id, {
+        method: 'PATCH',
+        body: {
+          make_model: $('#td-model').value.trim(),
+          year: $('#td-year').value ? parseInt($('#td-year').value) : null,
+          odometer_km: $('#td-odometer').value ? parseInt($('#td-odometer').value) : null,
+          next_service_due: $('#td-next-service').value || null
+        }
+      });
+      toast('Vehicle info saved');
+      go('trucks'); 
+    } catch (e) {
+      $('#td-err').textContent = e.message;
+      btn.disabled = false;
+    }
+  };
+
+  // Add new maintenance log
+  $('#ml-add').onclick = async () => {
+    const date = $('#ml-date').value;
+    const desc = $('#ml-desc').value.trim();
+    const cost = parseFloat($('#ml-cost').value) || 0;
+    
+    if (!date) return toast('Date is required', true);
+    
+    const btn = $('#ml-add');
+    btn.disabled = true;
+    try {
+      await api(`/api/trucks/${t.id}/maintenance`, {
+        method: 'POST',
+        body: { date, description: desc, cost }
+      });
+      toast('Record added');
+      render(); // Refreshes the page to show the new log
+    } catch (e) {
+      toast(e.message, true);
+      btn.disabled = false;
+    }
+  };
+
+  c.onclick = (e) => {
+    if (e.target.dataset.act === 'back') go('trucks');
+  };
+}
+async function viewDrivers(c) {
+  const drivers = await api('/api/drivers');
+  c.innerHTML = `<div class="card wide"><h2>Drivers</h2><p class="sub">Manage driver profiles</p>
+    ${drivers.map(d => `
+      <div class="frow">
+        <div>
+          <div class="nm">${esc(d.name)}</div>
+          <div class="sb">License: ${esc(d.license_no || 'N/A')} · Phone: ${esc(d.phone || 'N/A')}</div>
+        </div>
+        <div class="act">
+          ${badge(d.assigned_truck ? ['Truck: ' + d.assigned_truck, 'b-blue'] : ['Unassigned', 'b-gray'])}
+          <button class="btn sm" data-act="delete-driver" data-id="${d.id}" style="color:#A32D2D; border-color:#A32D2D;">Delete</button>
+        </div>
+      </div>
+    `).join('')}
+    <div class="sec-label" style="margin-top:24px;">Add a New Driver</div>
+    <div style="display:flex; gap:8px;">
+      <div style="flex:1;"><input id="nd-name" placeholder="Full Name"></div>
+      <div style="flex:1;"><input id="nd-license" placeholder="License No."></div>
+      <div style="flex:1;"><input id="nd-phone" placeholder="Phone"></div>
+      <button class="btn" data-act="add-driver">Add</button>
+    </div>
+  </div>`;
+
+  c.onclick = async (e) => {
+    const b = e.target.closest('[data-act]'); if (!b) return;
+
+    if (b.dataset.act === 'add-driver') {
+      const name = $('#nd-name').value.trim(), license = $('#nd-license').value.trim(), phone = $('#nd-phone').value.trim();
+      if (!name) return toast('Name is required', true);
+      await api('/api/drivers', { method: 'POST', body: { name, license_no: license, phone } });
+      toast('Driver added'); render();
+    }
+
+    if (b.dataset.act === 'delete-driver') {
+      if (!confirm('Are you sure you want to delete this driver?')) return;
+      try {
+        await api('/api/drivers/' + b.dataset.id, { method: 'DELETE' });
+        toast('Driver deleted');
+        render();
+      } catch (err) {
+        toast(err.message, true);
+      }
+    }
+  };
+}
+
+// ---------- HISTORY ----------
+async function viewHistory(c) {
+  const search = state.ctx.search || '';
+  const status = state.ctx.status || '';
+  const rows = await api(`/api/history?search=${encodeURIComponent(search)}&status=${status}`);
+  
+  c.innerHTML = `<div class="card wide">
+    <h2>Trip History</h2><p class="sub">Search and view past transactions</p>
+    <div style="display:flex; gap:8px; margin-bottom:16px;">
+      <input id="hist-search" placeholder="Search by waybill, client, or plate..." value="${esc(search)}" style="flex:1;">
+      <select id="hist-status" style="width:180px;">
+        <option value="">All Statuses</option>
+        <option value="completed" ${status==='completed'?'selected':''}>Completed</option>
+        <option value="awaiting_billing" ${status==='awaiting_billing'?'selected':''}>Awaiting Billing</option>
+        <option value="delivered" ${status==='delivered'?'selected':''}>Delivered</option>
+        <option value="in_progress" ${status==='in_progress'?'selected':''}>In Progress</option>
+      </select>
+      <button class="btn" data-act="search">Search</button>
+    </div>
+    
+    ${rows.length ? rows.map(t => `
+      <div class="frow" style="cursor:pointer;" data-act="view" data-id="${t.id}">
+        <div>
+          <div class="nm">${esc(t.waybill_number || 'No Waybill')} — ${esc(t.client_name || 'No Client')}</div>
+                    <div class="sb">${esc(t.plate_number)} · Trip Date: ${fmtDay(t.started_at)} · Driver: ${esc(t.driver_name || 'No Driver')}</div>
+          <div class="sb" style="color:#A32D2D; font-weight:500; margin-top:4px;">Booked on: ${fmtDateTime(t.created_at)}</div>
+        </div>
+        <div class="act">
+          ${t.waybill_total ? `<span style="font-weight:600; font-size:13px;">${peso(t.waybill_total)}</span>` : ''}
+          ${badge(TRIP[t.status] || [t.status, 'b-gray'])}
+        </div>
+      </div>
+    `).join('') : '<p class="muted">No trips match your search.</p>'}
+  </div>`;
+
+  c.onclick = (e) => {
+    const b = e.target.closest('[data-act]'); if (!b) return;
+    if (b.dataset.act === 'search') {
+      state.ctx = { search: $('#hist-search').value.trim(), status: $('#hist-status').value };
+      render();
+    }
+    if (b.dataset.act === 'view') go('historyDetail', { tripId: b.dataset.id });
+  };
+}
+
+async function viewHistoryDetail(c) {
+  const id = state.ctx.tripId;
+  const t = await api('/api/trips/' + id + '/details');
+  
+  c.innerHTML = `<div class="card wide">
+    <button class="btn sm" data-act="back" style="margin-bottom:12px;">← Back to History</button>
+    <h2>Trip Details — ${esc(t.waybill_number || 'No Waybill')}</h2>
+    <p class="sub">${esc(t.client_name)} · ${esc(t.plate_number)} · Driver: ${esc(t.driver_name || 'N/A')}</p>
+
+       <div style="margin-bottom:16px; background:#FAFAF8; padding:12px; border-radius:8px;">
+      <div class="row-between" style="margin-bottom:8px;">
+        <div><span class="muted">Trip Date</span><br><strong>${fmtDay(t.started_at)}</strong></div>
+        <div><span class="muted">Date Booked</span><br><strong style="color:#A32D2D;">${fmtDateTime(t.created_at)}</strong></div>
+        <div><span class="muted">Status</span><br>${badge(TRIP[t.status] || [t.status, 'b-gray'])}</div>
+      </div>
+      <div class="row-between" style="border-top:1px solid #ddd; padding-top:8px;">
+        <div><span class="muted">Allowance</span><br><strong>${peso(t.allowance_amount)}</strong></div>
+        <div><span class="muted">Waybill Total</span><br><strong>${peso(t.waybill_total)}</strong></div>
+        <div><span class="muted">GPS Distance</span><br><strong>${t.distance_km ? t.distance_km.toFixed(2) + ' km' : '—'}</strong></div>
+      </div>
+    </div>
+
+    <div class="sec-label">Waybill Stops</div>
+    ${t.stops.length ? t.stops.map(s => `
+      <div class="frow">
+        <div>
+          <div class="nm">${esc(s.client_name)} (${s.stop_type})</div>
+          <div class="sb">${esc(s.area_name || 'Extra Drop')} · DR: ${esc(s.dr_number || '—')} · ${esc(s.waybill_type || '')}</div>
+        </div>
+        <div class="act"><strong>${peso(s.rate)}</strong></div>
+      </div>
+    `).join('') : '<p class="muted">No stops recorded.</p>'}
+
+    ${t.invoice ? `
+      <div class="sec-label" style="margin-top:24px;">Invoice</div>
+      <div class="frow">
+        <div>
+          <div class="nm">INV-${String(t.invoice.id).padStart(4, '0')}</div>
+          <div class="sb">Issued ${fmtDay(t.invoice.issued_at)}</div>
+        </div>
+        <div class="act">
+          <strong>${peso(t.invoice.amount)}</strong>
+          ${badge(t.invoice.status === 'paid' ? ['Paid', 'b-green'] : ['Unpaid', 'b-amber'])}
+        </div>
+      </div>
+    ` : ''}
+  </div>`;
+
+  c.onclick = (e) => {
+    if (e.target.dataset.act === 'back') go('history');
+  };
+}
+
+render();
+</script>
+</body>
+</html>
